@@ -100,9 +100,9 @@ class DummyDataSeeder extends Seeder
                 ['invoice_number' => 'INV-DUMMY-'.str_pad($i, 3, '0', STR_PAD_LEFT)],
                 [
                     'customer_id' => $customer->id,
-                    'issue_date' => Carbon::now()->subDays(rand(1, 15)),
+                    'invoice_date' => Carbon::now()->subDays(rand(1, 15)),
                     'due_date' => Carbon::now()->addDays(rand(5, 15)),
-                    'status' => 'sent',
+                    'status' => 'UNPAID',
                     'subtotal' => 0,
                     'tax' => 0,
                     'total_amount' => 0,

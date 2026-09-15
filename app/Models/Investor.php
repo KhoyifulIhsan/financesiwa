@@ -17,4 +17,9 @@ class Investor extends Model
     {
         return $this->hasMany(Vehicle::class);
     }
+
+    public function partnerPayments(): HasMany
+    {
+        return $this->hasMany(PartnerPayment::class);
+    }
 }

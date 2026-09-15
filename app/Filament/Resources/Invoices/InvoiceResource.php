@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Invoices;
 use App\Filament\Resources\Invoices\Pages\CreateInvoice;
 use App\Filament\Resources\Invoices\Pages\EditInvoice;
 use App\Filament\Resources\Invoices\Pages\ListInvoices;
+use App\Filament\Resources\Invoices\RelationManagers\TripsRelationManager;
 use App\Filament\Resources\Invoices\Schemas\InvoiceForm;
 use App\Filament\Resources\Invoices\Tables\InvoicesTable;
 use App\Models\Invoice;
@@ -40,7 +41,9 @@ class InvoiceResource extends Resource
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            TripsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

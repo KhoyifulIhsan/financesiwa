@@ -13,6 +13,7 @@ class Trip extends Model
         'date',
         'customer_id',
         'tariff_id',
+        'invoice_id',
         'vehicle_id',
         'driver_id',
         'route_origin',
@@ -36,6 +37,11 @@ class Trip extends Model
         return $this->belongsTo(Tariff::class);
     }
 
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class);
+    }
+
     public function vehicle(): BelongsTo
     {
         return $this->belongsTo(Vehicle::class);
@@ -54,5 +60,12 @@ class Trip extends Model
     public function getTotalExpensesAttribute(): float
     {
         return (float) $this->tripExpenses()->sum('amount');
+    }
+
+    public function getTotalRevenueAttribute(): float
+    {
+        $customerPrice = $this->tariff ? (float) $this->tariff->customer_price : 0;
+
+        return (float) $this->volume * $customerPrice;
     }
 }

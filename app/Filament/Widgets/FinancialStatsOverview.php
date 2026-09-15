@@ -12,8 +12,8 @@ class FinancialStatsOverview extends BaseWidget
     protected function getStats(): array
     {
         $totalKasBank = BankCash::sum('current_balance');
-        $piutangBelumTertagih = Invoice::whereIn('status', ['unpaid', 'partial'])->sum('total_amount');
-        $totalInvoiceBulanIni = Invoice::whereMonth('issue_date', now()->month)->count();
+        $piutangBelumTertagih = Invoice::whereIn('status', ['UNPAID', 'unpaid', 'partial'])->sum('total_amount');
+        $totalInvoiceBulanIni = Invoice::whereMonth('invoice_date', now()->month)->count();
 
         return [
             Stat::make('Total Kas & Bank', 'Rp '.number_format($totalKasBank, 0, ',', '.'))
