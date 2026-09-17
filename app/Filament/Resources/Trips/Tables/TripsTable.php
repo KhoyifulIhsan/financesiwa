@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Trips\Tables;
 
 use App\Models\BankCash;
+use App\Models\Coa;
 use App\Models\Journal;
 use App\Models\JournalDetail;
 use App\Models\Trip;
@@ -159,60 +160,73 @@ class TripsTable
                             $vehicle = $trip->vehicle;
                             $tariff = $trip->tariff;
 
-                            if ($vehicle && $vehicle->ownership_status === 'Milik Mitra' && $tariff) {
-                                $volume = $trip->volume;
-                                $total_revenue = $volume * $tariff->customer_price;
-                                $mitra_share = 0;
+                            // 1. Cek Kepemilikan Armada:
+                            // Jika armada tidak terhubung ke investor (investor_id == null), maka armada Milik PT
+                            if (! $vehicle || $vehicle->investor_id === null) {
+                                // 2. Kondisi Jika Milik PT:
+                                // Tetapkan mitra_share_amount = 0 dan jangan buat jurnal bagi hasil mitra
+                                $trip->update(['mitra_share_amount' => 0]);
+                            } else {
+                                // 3. Kondisi Jika Milik Mitra (investor_id != null):
+                                if ($tariff) {
+                                    $volume = (float) $trip->volume;
+                                    $totalRevenue = $volume * (float) $tariff->customer_price;
+                                    $mitraShare = 0;
 
-                                // Kalkulasi Hak Mitra berdasarkan Tipe Tarif
-                                if ($tariff->fee_type === 'fixed') {
-                                    $mitra_share_per_unit = $tariff->customer_price - $tariff->pt_margin;
-                                    $mitra_share = $volume * $mitra_share_per_unit;
-                                } elseif ($tariff->fee_type === 'percentage') {
-                                    $pt_share = $total_revenue * ($tariff->pt_margin / 100);
-                                    $mitra_share = $total_revenue - $pt_share;
-                                }
+                                    // Kalkulasi Hak Mitra berdasarkan Tipe Tarif
+                                    if ($tariff->fee_type === 'fixed') {
+                                        $mitraSharePerUnit = (float) $tariff->customer_price - (float) $tariff->pt_margin;
+                                        $mitraShare = $volume * $mitraSharePerUnit;
+                                    } elseif ($tariff->fee_type === 'percentage') {
+                                        $ptShare = $totalRevenue * ((float) $tariff->pt_margin / 100);
+                                        $mitraShare = $totalRevenue - $ptShare;
+                                    }
 
-                                if ($mitra_share > 0) {
-                                    // Pastikan CoA untuk Bagi Hasil & Hutang Mitra tersedia (Otomatis buat jika belum ada)
-                                    $coaBebanBagiHasil = Coa::firstOrCreate(
-                                        ['code' => '5500'],
-                                        ['name' => 'Beban Bagi Hasil Mitra', 'type' => 'expense', 'is_active' => true]
-                                    );
-                                    $coaHutangMitra = Coa::firstOrCreate(
-                                        ['code' => '2150'],
-                                        ['name' => 'Hutang Mitra / Investor', 'type' => 'liability', 'is_active' => true]
-                                    );
+                                    $trip->update(['mitra_share_amount' => $mitraShare]);
 
-                                    $investorName = $vehicle->investor ? $vehicle->investor->name : 'Mitra';
+                                    if ($mitraShare > 0) {
+                                        // Pastikan CoA untuk Bagi Hasil & Hutang Mitra tersedia
+                                        $coaBebanBagiHasil = Coa::firstOrCreate(
+                                            ['code' => '5500'],
+                                            ['name' => 'Beban Bagi Hasil Mitra', 'type' => 'expense', 'is_active' => true]
+                                        );
+                                        $coaHutangMitra = Coa::firstOrCreate(
+                                            ['code' => '2150'],
+                                            ['name' => 'Hutang Mitra / Investor', 'type' => 'liability', 'is_active' => true]
+                                        );
 
-                                    // Buat Jurnal Bagi Hasil
-                                    $jurnalBagiHasil = Journal::create([
-                                        'journal_number' => 'BH-'.$trip->trip_number.'-'.time(),
-                                        'date' => now(),
-                                        'reference' => 'Trip #'.$trip->trip_number,
-                                        'description' => 'Bagi hasil mitra: '.$investorName.' (Trip '.$trip->trip_number.')',
-                                        'status' => 'Posted',
-                                        'created_by' => auth()->id(),
-                                    ]);
+                                        $investorName = $vehicle->investor ? $vehicle->investor->name : 'Mitra';
 
-                                    // Debit: Beban Bagi Hasil
-                                    JournalDetail::create([
-                                        'journal_id' => $jurnalBagiHasil->id,
-                                        'coa_id' => $coaBebanBagiHasil->id,
-                                        'debit' => $mitra_share,
-                                        'credit' => 0,
-                                        'description' => 'Beban Bagi Hasil Trip '.$trip->trip_number,
-                                    ]);
+                                        // Buat Jurnal Bagi Hasil
+                                        $jurnalBagiHasil = Journal::create([
+                                            'journal_number' => 'BH-'.$trip->trip_number.'-'.time(),
+                                            'date' => $data['journal_date'] ?? now(),
+                                            'reference' => 'Trip #'.$trip->trip_number,
+                                            'description' => 'Bagi hasil mitra: '.$investorName.' (Trip '.$trip->trip_number.')',
+                                            'status' => 'Posted',
+                                            'created_by' => auth()->id(),
+                                        ]);
 
-                                    // Kredit: Hutang Mitra
-                                    JournalDetail::create([
-                                        'journal_id' => $jurnalBagiHasil->id,
-                                        'coa_id' => $coaHutangMitra->id,
-                                        'debit' => 0,
-                                        'credit' => $mitra_share,
-                                        'description' => 'Hutang Bagi Hasil Mitra '.$investorName,
-                                    ]);
+                                        // Debit: Beban Bagi Hasil
+                                        JournalDetail::create([
+                                            'journal_id' => $jurnalBagiHasil->id,
+                                            'coa_id' => $coaBebanBagiHasil->id,
+                                            'debit' => $mitraShare,
+                                            'credit' => 0,
+                                            'description' => 'Beban Bagi Hasil Trip '.$trip->trip_number,
+                                        ]);
+
+                                        // Kredit: Hutang Mitra
+                                        JournalDetail::create([
+                                            'journal_id' => $jurnalBagiHasil->id,
+                                            'coa_id' => $coaHutangMitra->id,
+                                            'debit' => 0,
+                                            'credit' => $mitraShare,
+                                            'description' => 'Hutang Bagi Hasil Mitra '.$investorName,
+                                        ]);
+                                    }
+                                } else {
+                                    $trip->update(['mitra_share_amount' => 0]);
                                 }
                             }
 

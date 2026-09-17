@@ -50,6 +50,9 @@ class PartnerPaymentForm
                     ->label('Nominal Pencairan')
                     ->numeric()
                     ->prefix('Rp')
+                    ->default(0)
+                    ->readOnly()
+                    ->helperText('Nominal dihitung otomatis dari total hak mitra pada trip yang dikaitkan.')
                     ->required(),
 
                 TextInput::make('reference_number')

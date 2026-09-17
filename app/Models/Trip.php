@@ -14,17 +14,20 @@ class Trip extends Model
         'customer_id',
         'tariff_id',
         'invoice_id',
+        'partner_payment_id',
         'vehicle_id',
         'driver_id',
         'route_origin',
         'route_destination',
         'volume',
+        'mitra_share_amount',
         'status',
     ];
 
     protected $casts = [
         'date' => 'date',
         'volume' => 'decimal:2',
+        'mitra_share_amount' => 'decimal:2',
     ];
 
     public function customer(): BelongsTo
@@ -42,6 +45,11 @@ class Trip extends Model
         return $this->belongsTo(Invoice::class);
     }
 
+    public function partnerPayment(): BelongsTo
+    {
+        return $this->belongsTo(PartnerPayment::class);
+    }
+
     public function vehicle(): BelongsTo
     {
         return $this->belongsTo(Vehicle::class);
@@ -55,6 +63,11 @@ class Trip extends Model
     public function tripExpenses(): HasMany
     {
         return $this->hasMany(TripExpense::class);
+    }
+
+    public function driverAdvances(): HasMany
+    {
+        return $this->hasMany(DriverAdvance::class);
     }
 
     public function getTotalExpensesAttribute(): float

@@ -16,6 +16,8 @@ use Filament\Tables\Table;
 
 class BillResource extends Resource
 {
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $model = Bill::class;
 
     protected static ?string $navigationLabel = 'Tagihan Vendor';

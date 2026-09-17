@@ -21,4 +21,9 @@ class Driver extends Model
     {
         return $this->hasMany(Trip::class);
     }
+
+    public function driverAdvances(): HasMany
+    {
+        return $this->hasMany(DriverAdvance::class);
+    }
 }

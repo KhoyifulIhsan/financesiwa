@@ -21,8 +21,44 @@ class PartnerPaymentObserver
             return;
         }
 
-        DB::transaction(function () use ($payment, $amount) {
-            // 1. Pastikan CoA 'Hutang Mitra / Investor' tersedia (kode '2150')
+        $this->createPaymentJournal($payment, $amount);
+    }
+
+    /**
+     * Handle the PartnerPayment "updated" event.
+     */
+    public function updated(PartnerPayment $payment): void
+    {
+        $newAmount = (float) $payment->amount;
+        $oldAmount = (float) $payment->getOriginal('amount');
+
+        if ($newAmount == $oldAmount && ! $payment->wasChanged(['bank_account_id', 'reference_number'])) {
+            return;
+        }
+
+        $existingJournal = Journal::where('reference', $payment->reference_number)
+            ->orWhere('reference', 'Pencairan #'.$payment->id)
+            ->first();
+
+        if (! $existingJournal) {
+            if ($newAmount > 0) {
+                $this->createPaymentJournal($payment, $newAmount);
+            }
+
+            return;
+        }
+
+        DB::transaction(function () use ($payment, $existingJournal, $newAmount, $oldAmount) {
+            $difference = $newAmount - $oldAmount;
+            $reference = $payment->reference_number ?: ('Pencairan #'.$payment->id);
+            $investorName = $payment->investor ? $payment->investor->name : 'Mitra';
+
+            $existingJournal->update([
+                'reference' => $reference,
+                'description' => 'Pencairan Bagi Hasil Mitra: '.$investorName.($payment->notes ? ' ('.$payment->notes.')' : ''),
+                'date' => $payment->payment_date ?? now(),
+            ]);
+
             $coaHutangMitra = Coa::firstOrCreate(
                 ['code' => '2150'],
                 [
@@ -32,7 +68,64 @@ class PartnerPaymentObserver
                 ]
             );
 
-            // 2. Buat entri Jurnal Pengeluaran Kas (Kas Keluar)
+            // Update details
+            foreach ($existingJournal->details as $detail) {
+                if ($detail->coa_id == $coaHutangMitra->id) {
+                    $detail->update(['debit' => $newAmount]);
+                } else {
+                    $detail->update([
+                        'coa_id' => $payment->bank_account_id,
+                        'credit' => $newAmount,
+                    ]);
+                }
+            }
+
+            // Adjust BankCash
+            if ($difference != 0) {
+                $bankCash = BankCash::where('coa_id', $payment->bank_account_id)->first();
+                if ($bankCash) {
+                    $bankCash->decrement('current_balance', $difference);
+                }
+            }
+        });
+    }
+
+    /**
+     * Handle the PartnerPayment "deleted" event.
+     */
+    public function deleted(PartnerPayment $payment): void
+    {
+        $existingJournal = Journal::where('reference', $payment->reference_number)
+            ->orWhere('reference', 'Pencairan #'.$payment->id)
+            ->first();
+
+        if ($existingJournal) {
+            DB::transaction(function () use ($payment, $existingJournal) {
+                $amount = (float) $payment->amount;
+                if ($amount > 0) {
+                    $bankCash = BankCash::where('coa_id', $payment->bank_account_id)->first();
+                    if ($bankCash) {
+                        $bankCash->increment('current_balance', $amount);
+                    }
+                }
+
+                $existingJournal->delete();
+            });
+        }
+    }
+
+    protected function createPaymentJournal(PartnerPayment $payment, float $amount): void
+    {
+        DB::transaction(function () use ($payment, $amount) {
+            $coaHutangMitra = Coa::firstOrCreate(
+                ['code' => '2150'],
+                [
+                    'name' => 'Hutang Mitra / Investor',
+                    'type' => 'liability',
+                    'is_active' => true,
+                ]
+            );
+
             $journalNumber = 'OUT-'.time().'-'.$payment->id;
             if (Journal::where('journal_number', $journalNumber)->exists()) {
                 $journalNumber .= '-'.strtoupper(substr(uniqid(), -4));
@@ -50,8 +143,6 @@ class PartnerPaymentObserver
                 'created_by' => auth()->id(),
             ]);
 
-            // 3. Buat 2 baris journal_details
-            // DEBIT: Hutang Mitra / Investor (mengurangi hutang di Debit)
             JournalDetail::create([
                 'journal_id' => $journal->id,
                 'coa_id' => $coaHutangMitra->id,
@@ -60,7 +151,6 @@ class PartnerPaymentObserver
                 'description' => 'Pelunasan Hutang Bagi Hasil Mitra: '.$investorName,
             ]);
 
-            // KREDIT: Rekening Kas/Bank yang dipilih user (mengurangi kas di Kredit)
             JournalDetail::create([
                 'journal_id' => $journal->id,
                 'coa_id' => $payment->bank_account_id,
@@ -69,7 +159,6 @@ class PartnerPaymentObserver
                 'description' => 'Pengeluaran Kas/Bank untuk Pembayaran Mitra: '.$investorName,
             ]);
 
-            // 4. Sinkronisasi saldo rekening kas/bank jika akun terdaftar di data BankCash
             $bankCash = BankCash::where('coa_id', $payment->bank_account_id)->first();
             if ($bankCash) {
                 $bankCash->decrement('current_balance', $amount);

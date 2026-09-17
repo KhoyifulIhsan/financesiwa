@@ -5,6 +5,7 @@ namespace App\Filament\Resources\PartnerPayments;
 use App\Filament\Resources\PartnerPayments\Pages\CreatePartnerPayment;
 use App\Filament\Resources\PartnerPayments\Pages\EditPartnerPayment;
 use App\Filament\Resources\PartnerPayments\Pages\ListPartnerPayments;
+use App\Filament\Resources\PartnerPayments\RelationManagers\TripsRelationManager;
 use App\Filament\Resources\PartnerPayments\Schemas\PartnerPaymentForm;
 use App\Filament\Resources\PartnerPayments\Tables\PartnerPaymentsTable;
 use App\Models\PartnerPayment;
@@ -40,7 +41,9 @@ class PartnerPaymentResource extends Resource
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            TripsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array
